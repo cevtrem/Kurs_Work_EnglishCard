@@ -10,7 +10,7 @@ import configparser
 from telebot import types, TeleBot, custom_filters
 from telebot.storage import StateMemoryStorage
 from telebot.handler_backends import State, StatesGroup
-from connect_with_db import word, users, user_words
+from connect_with_db import words, users, user_words
 
 
 def read_token_telegram():
@@ -28,7 +28,6 @@ print('Start telegram bot...')
 state_storage = StateMemoryStorage()
 token_bot = read_token_telegram()
 bot = TeleBot(token_bot, state_storage=state_storage)
-known_users = users.get_known_users()
 buttons = []
 
 
@@ -47,8 +46,8 @@ class Command:
     Класс содержит названия команд для добавления,
      удаления слов, выбора режимов обучения и перехода между ними.
     """
-    ADD_WORD = 'Добавить слово ➕'
-    DELETE_WORD = 'Удалить слово🔙'
+    ADD_WORD = 'Добавить слово к изучению ➕'
+    DELETE_WORD = 'Убрать слово из изучения🔙'
     NEXT = 'Дальше ⏭'
     LEARN_NEW = 'Учить новые слова'
     LEARN_SAVED = 'Учить сохраненные слова'
@@ -73,11 +72,11 @@ def create_cards(message):
     Обработчик команд /cards и /start, который проверяет, является ли пользователь новым,
     сохраняет его в базе данных, и предлагает выбрать режим обучения.
     """
-    cid = message.chat.id
-    if cid not in known_users:
-        user_name = (bot.get_chat(cid)).first_name
-        bot.send_message(cid, f"Hello, {user_name}, let's study English...?")
-        users.save_user(user_name, cid)
+    user_id = message.from_user.id
+    if user_id not in users.get_known_users():
+        user_name = (bot.get_chat(user_id)).first_name
+        bot.send_message(user_id, f"Hello, {user_name}, let's study English...?")
+        users.save_user(user_id, user_name)
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         if 'learning_mode' not in data:
             select_learning_mode(message)
@@ -115,14 +114,16 @@ def show_cards(message):
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         learning_mode = data.get('learning_mode')
         if learning_mode == Command.LEARN_NEW:
-            target_word, translate_word, others, target_id = word.get_word_from_words()
+            target_word, translate_word, others, target_id = words.get_word_from_words()
         elif learning_mode == Command.LEARN_SAVED:
-            cid = message.chat.id
-            uid = known_users[cid]
-            target_word, translate_word, others, target_id = user_words.get_user_words(uid)
+            user_id = message.from_user.id
+            target_word, translate_word, others, target_id = user_words.get_user_words(user_id)
         if not target_word:
             bot.send_message(message.chat.id,
-                "У вас нет сохраненных слов. Выберите режим - Учить новые слова")
+                f"У вас мало сохраненных слов = {user_words.count_user_words(user_id)}, "
+                f"для выбранного режима, "
+                f"добавьте к изучению не меньше {10-user_words.count_user_words(user_id)} слов. "
+                f"Выберите режим - Учить новые слова")
             select_learning_mode(message)
             return
     markup = types.ReplyKeyboardMarkup(row_width=2)
@@ -171,20 +172,18 @@ def next_cards(message):
 def delete_word(message):
     """ Функция, которая получает идентификатор слова и удаляет его из базы данных пользователя."""
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        cid = message.chat.id
-        uid = known_users[cid]
+        user_id = message.from_user.id
         target_id = data['target_id']
-        user_words.delete_word(uid, target_id)
+        user_words.delete_word(user_id, target_id)
 
 
 @bot.message_handler(func=lambda message: message.text == Command.ADD_WORD)
 def add_word(message):
     """Функция, которая получает идентификатор слова и добавляет его в базу данных пользователя."""
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        cid = message.chat.id
-        uid = known_users[cid]
+        user_id = message.from_user.id
         target_id = data['target_id']
-        user_words.add_word(uid, target_id)
+        user_words.add_word(user_id, target_id)
 
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])

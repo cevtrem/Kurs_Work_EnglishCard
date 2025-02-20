@@ -89,29 +89,24 @@ class Words:
         Метод для получения случайного слова из таблицы words,
         его перевода и списка других случайных слов для создания карточек.
         """
-        others = []
         with self.connect_to_database() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''SELECT MAX(id) FROM words''')
                 max_id = cursor.fetchone()[0]
-                target_id = random.randint(0, max_id)
-                cursor.execute('''
-                                    SELECT en FROM words WHERE id = %s
-                                     ''', (target_id,))
-                target_word = cursor.fetchone()[0]
-                cursor.execute('''
-                                    SELECT ru FROM words WHERE id = %s
-                                     ''', (target_id,))
-                translate_word = cursor.fetchone()[0]
-                for _ in range(3):
-                    random_other_id = random.randint(0, max_id)
-                    if target_id != random_other_id:
-                        cursor.execute('''
-                                            SELECT en FROM words WHERE id = %s
-                                            ''', (random_other_id,))
-                        other_word = cursor.fetchone()[0]
-                        others.append(other_word)
+                random_ids = set()
+                while len(random_ids) < 4:
+                    random_ids.add(random.randint(1, max_id))
+                cursor.execute("SELECT id, en, ru FROM words WHERE id IN %s", (tuple(random_ids),))
+                rows = cursor.fetchall()
+                target_word = rows[0][1]
+                translate_word = rows[0][2]
+                target_id = rows[0][0]
+                others = []
+                for idx, row in enumerate(rows):
+                    if idx != 0:
+                        others.append(row[1])
         return target_word, translate_word, others, target_id
+
 
     def count_words(self):
         """Метод для получения количества слов в таблице words"""
@@ -139,43 +134,40 @@ class Users:
 
     def create_table_users(self):
         """Метод для создания таблицы users,
-        если она еще не существует, с полями id, chat_id и username.
+        если она еще не существует, с полями id и username.
         """
         with self.connect_to_database() as conn:
             with conn.cursor() as cursor:
                 cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY UNIQUE,
-                chat_id BIGINT UNIQUE,
+                user_id BIGINT PRIMARY KEY UNIQUE,
                 username VARCHAR(100)
                     );''')
 
-    def save_user(self, name_user, chat_id):
+    def save_user(self, user_id, name_user):
         """
-        Метод для добавления нового пользователя в таблицу users,
-        передавая имя пользователя и его chat_id.
+        Метод для добавления нового пользователя в таблицу users
         """
         with self.connect_to_database() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("INSERT INTO users (username, chat_id) VALUES (%s, %s);",
-                               (name_user, chat_id))
+                cursor.execute("INSERT INTO users (user_id, username) VALUES (%s, %s);",
+                               (user_id, name_user))
                 conn.commit()
 
     def get_known_users(self):
         """
         Метод для получения всех известных пользователей из таблицы users,
-        возвращая словарь, где ключ - это chat_id, а значение - id пользователя.
+        возвращая список всех user_id
         """
         with self.connect_to_database() as conn:
             with conn.cursor() as cursor:
-                known_users = {}
+                known_users = []
                 cursor.execute("""
                         SELECT * FROM users;
                         """)
                 for data in cursor.fetchall():
                     user_id = data[0]
-                    chat_id = data[1]
-                    known_users[chat_id] = user_id
+                    known_users.append(user_id)
                 return known_users
 
     def count_users(self):
@@ -212,7 +204,7 @@ class UserWords:
             with conn.cursor() as cursor:
                 cursor.execute('''
                 CREATE TABLE IF NOT EXISTS user_words (
-                user_id INTEGER REFERENCES users(id),
+                user_id BIGINT REFERENCES users(user_id),
                 word_id INTEGER REFERENCES words(id),
                 PRIMARY KEY (user_id, word_id)
                     );''')
@@ -244,37 +236,27 @@ class UserWords:
         Метод для получения случайного слова из списка сохраненных слов пользователя,
         его перевода и списка других случайных слов для создания карточек.
         Возвращает target_word, translate_word, others и target_id.
-        Если у пользователя нет сохраненных слов, возвращает None.
+        Если у пользователя меньше 10 сохраненных слов, возвращает None.
         """
-        others = []
         with self.connect_to_database() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT word_id FROM user_words WHERE user_id = %s;", (user_id,))
                 word_ids = cursor.fetchall()
                 word_ids = [row[0] for row in word_ids]
-
-                if not word_ids:
+                if not word_ids or self.count_user_words(user_id) < 10:
                     return None, None, None, None
-
-                cursor.execute('''SELECT MAX(id) FROM words''')
-                max_id = cursor.fetchone()[0]
-                target_id = random.choice(word_ids)
-                cursor.execute('''
-                                    SELECT en FROM words WHERE id = %s
-                                     ''', (target_id,))
-                target_word = cursor.fetchone()[0]
-                cursor.execute('''
-                                    SELECT ru FROM words WHERE id = %s
-                                     ''', (target_id,))
-                translate_word = cursor.fetchone()[0]
-                for _ in range(3):
-                    random_other_id = random.randint(0, max_id)
-                    if target_id != random_other_id:
-                        cursor.execute('''
-                                            SELECT en FROM words WHERE id = %s
-                                            ''', (random_other_id,))
-                        other_word = cursor.fetchone()[0]
-                        others.append(other_word)
+                random_ids = set()
+                while len(random_ids) < 4:
+                    random_ids.add(random.choice(word_ids))
+                cursor.execute("SELECT id, en, ru FROM words WHERE id IN %s", (tuple(random_ids),))
+                rows = cursor.fetchall()
+                target_word = rows[0][1]
+                translate_word = rows[0][2]
+                target_id = rows[0][0]
+                others = []
+                for idx, row in enumerate(rows):
+                    if idx != 0:
+                        others.append(row[1])
         return target_word, translate_word, others, target_id
 
     def count_user_words(self, user_id):
@@ -288,14 +270,14 @@ class UserWords:
 # чтение данных для подключения к БД
 user, password, db_name = read_user_data()
 # создаем экземпляр класса Words
-word = Words(user, password, db_name)
+words = Words(user, password, db_name)
 # создаем таблицу words
-word.create_table_words()
-    # word.drop_table_words('user_words')
-    # word.drop_table_words('users')
-    # word.drop_table_words('words')
+words.create_table_words()
+# word.drop_table_words('user_words')
+# word.drop_table_words('users')
+# word.drop_table_words('words')
 # заполняем таблицу words
-word.fill_table_words()
+words.fill_table_words()
 # создаем экземпляр класса Users
 users = Users(user, password, db_name)
 # создаем таблицу users
@@ -304,5 +286,3 @@ users.create_table_users()
 user_words = UserWords(user, password, db_name)
 # создаем таблицу user_words
 user_words.create_table_user_words()
-
-
