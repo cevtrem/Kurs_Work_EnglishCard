@@ -23,21 +23,16 @@ pip install telebot psycopg2 configparser
 
 Создайте базу данных для бота:
 ```bash
-sql
-Copy
 CREATE DATABASE english_bot;
+```
 Создайте пользователя и предоставьте ему права на доступ к базе данных:
-
-sql
-Copy
+```bash
 CREATE USER bot_user WITH PASSWORD 'your_password';
 GRANT ALL PRIVILEGES ON DATABASE english_bot TO bot_user;
 ```
 ### 3. Настройка конфигурационного файла
 Создайте файл settings.ini в корневой директории проекта с следующим содержимым:
 ```bash
-ini
-Copy
 [TG]
 TELEGRAM_TOKEN = ваш_токен_бота
 
@@ -51,8 +46,6 @@ db_name = english_bot
 ### 4. Заполнение базы данных словами
 В папке Data_Base_Words должен находиться файл words.json, содержащий слова для изучения. Пример структуры файла:
 ```bash
-json
-Copy
 [
     {"en": "apple", "ru": "яблоко", "tr": "эпл"},
     {"en": "banana", "ru": "банан", "tr": "банана"},
@@ -64,7 +57,6 @@ Copy
 Запуск бота
 Для запуска бота выполните команду:
 ```bash
-Copy
 python main.py
 ```
 Бот начнет работать и будет доступен в Telegram по имени, которое вы указали при создании бота.
